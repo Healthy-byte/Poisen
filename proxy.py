@@ -27,5 +27,24 @@ def hexdump(data, length=16, show=True):
 	else:
 		return results
 
+def receive_from(connection):
+	buffer = b''
+	connection.settimeout(10)
+	try:
+		while True:
+			data = connection.recv(4096)
+			if not data:
+				break
+			buffer += data
+	except Exception as error:
+		print (error)
+	return buffer
+
+def proxy_handler (client_socket, remote_host, remote_port, receive_first):
+	remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #remote ipv4 tcp socket
+	remote_socket.connect((remote_host, remote_port))
+
+	if 
+
 hexdump("Dette er 123 \n en test \ 123 \n")
 
